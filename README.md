@@ -6,6 +6,8 @@ Improvements coming soon!
 
 ## Demo
 
+Latest demo [here](https://twitter.com/mckaywrigley/status/1834721745179492735).
+
 ## Requirements
 
 You will need an OpenAI API key.
