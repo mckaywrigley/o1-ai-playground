@@ -2,6 +2,8 @@
 
 A playground for OpenAI's o1 models.
 
+Improvements coming soon!
+
 ## Demo
 
 ## Requirements

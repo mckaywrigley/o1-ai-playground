@@ -16,6 +16,9 @@ import ReactTextareaAutosize from "react-textarea-autosize";
 
 export default function Home() {
   const abortController = useRef<AbortController | null>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const endOfMessagesRef = useRef<HTMLDivElement>(null);
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [model, setModel] = useState<"o1-preview" | "o1-mini">("o1-mini");
@@ -165,6 +168,14 @@ export default function Home() {
     }
   };
 
+  const scrollToBottom = () => {
+    endOfMessagesRef.current?.scrollIntoView({ behavior: "auto" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
   return (
     <div className="h-screen flex bg-background">
       <Sidebar
@@ -198,7 +209,10 @@ export default function Home() {
           </div>
         </div>
 
-        <ScrollArea className="flex-1 overflow-hidden">
+        <ScrollArea
+          className="flex-1 overflow-hidden"
+          ref={scrollAreaRef}
+        >
           <div className="w-full max-w-[1000px] mx-auto">
             {messages.map((message, index) => (
               <div
@@ -214,6 +228,8 @@ export default function Home() {
               </div>
             ))}
           </div>
+
+          <div ref={endOfMessagesRef}></div>
         </ScrollArea>
 
         <div className="relative flex items-center mt-4 pb-6 w-full max-w-[800px] mx-auto">
