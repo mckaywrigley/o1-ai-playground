@@ -1,101 +1,245 @@
-import Image from "next/image";
+"use client";
+
+import { generateMessage } from "@/actions/openai-actions";
+import { MessageMarkdown } from "@/components/messages/message-markdown";
+import ModelSelect from "@/components/model-select";
+import Sidebar from "@/components/sidebar";
+import { ThemeSwitcher } from "@/components/theme-switcher";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { getLocalStorageItem, setLocalStorageItem } from "@/lib/local-storage/local-storage";
+import { cn } from "@/lib/utils";
+import { Chat } from "@/types/chat/chats-types";
+import { Message } from "@/types/messages/messages-types";
+import { Send, StopCircle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import ReactTextareaAutosize from "react-textarea-autosize";
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const abortController = useRef<AbortController | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const [model, setModel] = useState<"o1-preview" | "o1-mini">("o1-mini");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isAborted, setIsAborted] = useState(false);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  useEffect(() => {
+    const storedChats = getLocalStorageItem<Chat[]>("chats") || [];
+    setChats(storedChats);
+    if (storedChats.length > 0) {
+      setCurrentChatId(storedChats[0].id);
+      setMessages(storedChats[0].messages);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (currentChatId) {
+      const currentChat = chats.find((chat) => chat.id === currentChatId);
+      if (currentChat) {
+        const updatedChat = { ...currentChat, messages, model };
+        const updatedChats = chats.map((chat) => (chat.id === currentChatId ? updatedChat : chat));
+        setLocalStorageItem("chats", updatedChats);
+      }
+    }
+  }, [messages, currentChatId, model]);
+
+  const handleSubmit = async () => {
+    if (!input.trim()) {
+      alert("Please enter a message");
+      return;
+    }
+
+    setIsGenerating(true);
+    setIsAborted(false);
+    abortController.current = new AbortController();
+
+    const userMessage: Message = {
+      id: new Date().toISOString(),
+      role: "user",
+      content: input,
+      createdAt: new Date()
+    };
+
+    const placeholderMessage: Message = {
+      id: `loading-${new Date().toISOString()}`,
+      role: "assistant",
+      content: "Thinking...",
+      createdAt: new Date()
+    };
+
+    // Create a new chat if there isn't one
+    if (!currentChatId) {
+      const chatName = input.trim().slice(0, 50) + (input.length > 50 ? "..." : "");
+      const newChat: Chat = {
+        id: new Date().toISOString(),
+        name: chatName,
+        messages: [userMessage],
+        createdAt: new Date(),
+        model: model
+      };
+      setChats((prevChats) => [newChat, ...prevChats]);
+      setCurrentChatId(newChat.id);
+      setMessages([userMessage, placeholderMessage]);
+    } else {
+      setChats((prevChats) => prevChats.map((chat) => (chat.id === currentChatId ? { ...chat, messages: [...chat.messages, userMessage, placeholderMessage] } : chat)));
+      setMessages((prev) => [...prev, userMessage, placeholderMessage]);
+    }
+
+    setInput("");
+
+    try {
+      const text = await generateMessage(model, [...messages, userMessage]);
+
+      if (isAborted) {
+        setMessages((prev) => prev.map((msg) => (msg.id === placeholderMessage.id ? { ...msg, id: new Date().toISOString(), content: "Message generation stopped." } : msg)));
+      } else {
+        setMessages((prev) => prev.map((msg) => (msg.id === placeholderMessage.id ? { ...msg, id: new Date().toISOString(), content: text } : msg)));
+      }
+    } catch (error) {
+      console.error(error);
+      setMessages((prev) => prev.map((msg) => (msg.id === placeholderMessage.id ? { ...msg, id: new Date().toISOString(), content: "Failed to generate message." } : msg)));
+    } finally {
+      setIsGenerating(false);
+      abortController.current = null;
+    }
+  };
+
+  const handleStop = () => {
+    if (abortController.current) {
+      abortController.current.abort();
+      setIsAborted(true);
+      setIsGenerating(false);
+      setMessages((prev) => {
+        const lastUserMessageIndex = prev.length - 2;
+        return prev.filter((_, idx) => idx !== lastUserMessageIndex && idx !== prev.length - 1);
+      });
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  };
+
+  const handleNewChat = () => {
+    const newChat: Chat = {
+      id: new Date().toISOString(),
+      name: "New Chat",
+      messages: [],
+      createdAt: new Date(),
+      model
+    };
+    setChats([newChat, ...chats]);
+    setCurrentChatId(newChat.id);
+    setMessages([]);
+  };
+
+  const handleChatSelect = (chatId: string) => {
+    setCurrentChatId(chatId);
+    setChats((prevChats) => {
+      const selectedChat = prevChats.find((chat) => chat.id === chatId);
+      if (selectedChat) {
+        setMessages(selectedChat.messages);
+        setModel(selectedChat.model);
+      }
+      return prevChats;
+    });
+  };
+
+  const handleChatDelete = (chatId: string) => {
+    const updatedChats = chats.filter((chat) => chat.id !== chatId);
+    setChats(updatedChats);
+    setLocalStorageItem("chats", updatedChats);
+
+    if (chatId === currentChatId) {
+      if (updatedChats.length > 0) {
+        setCurrentChatId(updatedChats[0].id);
+        setMessages(updatedChats[0].messages);
+      } else {
+        setCurrentChatId(null);
+        setMessages([]);
+      }
+    }
+  };
+
+  return (
+    <div className="h-screen flex bg-background">
+      <Sidebar
+        chats={chats}
+        currentChatId={currentChatId}
+        onNewChat={handleNewChat}
+        onChatSelect={handleChatSelect}
+        onChatDelete={handleChatDelete}
+      />
+
+      <div className="flex flex-col flex-1 gap-4">
+        <div className="flex items-center justify-between w-full max-w-[1800px] p-4">
+          <div className="text-xl font-bold">o1 Playground</div>
+
+          <div className="flex items-center gap-4">
+            <div className="flex justify-between items-center w-[200px]">
+              <ModelSelect
+                model={model}
+                onSelect={(newModel) => {
+                  setModel(newModel);
+                  if (currentChatId) {
+                    const updatedChats = chats.map((chat) => (chat.id === currentChatId ? { ...chat, model: newModel } : chat));
+                    setChats(updatedChats);
+                    setLocalStorageItem("chats", updatedChats);
+                  }
+                }}
+              />
+            </div>
+
+            <ThemeSwitcher />
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+
+        <ScrollArea className="flex-1 overflow-hidden">
+          <div className="w-full max-w-[1000px] mx-auto">
+            {messages.map((message, index) => (
+              <div
+                key={index}
+                className={cn("mb-4 flex", message.role === "user" ? "justify-end" : "justify-start", isGenerating && message.id.startsWith("loading-") && "animate-pulse")}
+              >
+                <div className={`px-4 py-2 max-w-[600px] rounded ${message.role === "user" ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`}>
+                  <MessageMarkdown
+                    role={message.role}
+                    content={message.content}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </ScrollArea>
+
+        <div className="relative flex items-center mt-4 pb-6 w-full max-w-[800px] mx-auto">
+          <ReactTextareaAutosize
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            placeholder="Ask o1 anything..."
+            className="w-full resize-none rounded-md p-4 pr-12 bg-secondary/90 text-secondary-foreground focus:outline-none"
+            minRows={1}
+            maxRows={20}
+            onKeyDown={handleKeyDown}
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+          {isGenerating ? (
+            <StopCircle
+              onClick={handleStop}
+              className="absolute right-[14px] top-[28px] transform -translate-y-1/2 cursor-pointer hover:opacity-80"
+            />
+          ) : (
+            <Send
+              onClick={handleSubmit}
+              className="absolute right-[14px] top-[28px] transform -translate-y-1/2 cursor-pointer text-primary hover:opacity-80"
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
 }
