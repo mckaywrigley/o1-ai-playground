@@ -18,6 +18,15 @@ As of September 13th, 2024, you will need to be an organization with Tier 5 acce
 
 We hope to see o1 models available to all users soon, and we'll be ready for you!
 
+### Using o1 models via OpenRouter
+
+If you have an [OpenRouter](https://openrouter.ai/) account, create an API key and add the following to `.env.local`:
+
+```
+OPENAI_API_KEY=<openrouter api key>
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+```
+
 ## Getting Started
 
 ```bash
