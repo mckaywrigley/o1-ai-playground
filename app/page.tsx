@@ -94,11 +94,20 @@ export default function Home() {
     try {
       const text = await generateMessage(model, [...messages, userMessage]);
 
-      if (isAborted) {
-        setMessages((prev) => prev.map((msg) => (msg.id === placeholderMessage.id ? { ...msg, id: new Date().toISOString(), content: "Message generation stopped." } : msg)));
-      } else {
-        setMessages((prev) => prev.map((msg) => (msg.id === placeholderMessage.id ? { ...msg, id: new Date().toISOString(), content: text } : msg)));
-      }
+      let updatedMessages: Message[];
+      setMessages((prev) => {
+        if (isAborted) {
+          updatedMessages = prev.map((msg) => (msg.id === placeholderMessage.id ? { ...msg, id: new Date().toISOString(), content: "Message generation stopped." } : msg));
+        } else {
+          updatedMessages = prev.map((msg) => (msg.id === placeholderMessage.id ? { ...msg, id: new Date().toISOString(), content: text } : msg));
+        }
+        return updatedMessages;
+      });
+
+      // Save to local storage
+      const updatedChats = chats.map((chat) => (chat.id === currentChatId ? { ...chat, messages: updatedMessages } : chat));
+      setChats(updatedChats);
+      setLocalStorageItem("chats", updatedChats);
     } catch (error) {
       console.error(error);
       setMessages((prev) => prev.map((msg) => (msg.id === placeholderMessage.id ? { ...msg, id: new Date().toISOString(), content: "Failed to generate message." } : msg)));
