@@ -21,6 +21,7 @@ export default function ModelSelect({ model, onSelect }: ModelSelectProps) {
       <SelectTrigger>
         <SelectValue placeholder="Select Model" />
       </SelectTrigger>
+
       <SelectContent>
         <SelectItem value="o1-mini">o1 Mini</SelectItem>
         <SelectItem value="o1-preview">o1 Preview</SelectItem>

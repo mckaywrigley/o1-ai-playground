@@ -47,16 +47,20 @@ export default function Home() {
     }
   }, [messages, currentChatId, model]);
 
+  // Function to handle message submission
   const handleSubmit = async () => {
+    // Check if the input is empty
     if (!input.trim()) {
       alert("Please enter a message");
       return;
     }
 
+    // Set states for message generation
     setIsGenerating(true);
     setIsAborted(false);
     abortController.current = new AbortController();
 
+    // Create a new user message object
     const userMessage: Message = {
       id: new Date().toISOString(),
       role: "user",
@@ -64,6 +68,7 @@ export default function Home() {
       createdAt: new Date()
     };
 
+    // Create a placeholder message for the assistant's response
     const placeholderMessage: Message = {
       id: `loading-${new Date().toISOString()}`,
       role: "assistant",
@@ -71,8 +76,9 @@ export default function Home() {
       createdAt: new Date()
     };
 
-    // Create a new chat if there isn't one
+    // Handle the case when there's no current chat
     if (!currentChatId) {
+      // Create a new chat with the user's message as the name
       const chatName = input.trim().slice(0, 50) + (input.length > 50 ? "..." : "");
       const newChat: Chat = {
         id: new Date().toISOString(),
@@ -81,37 +87,47 @@ export default function Home() {
         createdAt: new Date(),
         model: model
       };
+
+      // Update the chats state with the new chat
       setChats((prevChats) => [newChat, ...prevChats]);
       setCurrentChatId(newChat.id);
       setMessages([userMessage, placeholderMessage]);
     } else {
+      // Update the existing chat with the new messages
       setChats((prevChats) => prevChats.map((chat) => (chat.id === currentChatId ? { ...chat, messages: [...chat.messages, userMessage, placeholderMessage] } : chat)));
       setMessages((prev) => [...prev, userMessage, placeholderMessage]);
     }
 
+    // Clear the input field
     setInput("");
 
     try {
+      // Generate the assistant's response
       const text = await generateMessage(model, [...messages, userMessage]);
 
       let updatedMessages: Message[];
+      // Update the messages state with the generated response
       setMessages((prev) => {
         if (isAborted) {
+          // If the generation was aborted, update the placeholder message
           updatedMessages = prev.map((msg) => (msg.id === placeholderMessage.id ? { ...msg, id: new Date().toISOString(), content: "Message generation stopped." } : msg));
         } else {
+          // Otherwise, update with the generated text
           updatedMessages = prev.map((msg) => (msg.id === placeholderMessage.id ? { ...msg, id: new Date().toISOString(), content: text } : msg));
         }
         return updatedMessages;
       });
 
-      // Save to local storage
+      // Update the chats in local storage
       const updatedChats = chats.map((chat) => (chat.id === currentChatId ? { ...chat, messages: updatedMessages } : chat));
       setChats(updatedChats);
       setLocalStorageItem("chats", updatedChats);
     } catch (error) {
+      // Handle any errors during message generation
       console.error(error);
       setMessages((prev) => prev.map((msg) => (msg.id === placeholderMessage.id ? { ...msg, id: new Date().toISOString(), content: "Failed to generate message." } : msg)));
     } finally {
+      // Reset generation states
       setIsGenerating(false);
       abortController.current = null;
     }
